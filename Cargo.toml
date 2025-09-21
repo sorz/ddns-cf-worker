@@ -1,0 +1,17 @@
+[package]
+name = "ddns-cf-worker"
+version = "0.1.0"
+edition = "2021"
+authors = ["Shell Chen <me@sorz.org>"]
+
+[package.metadata.release]
+release = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+worker = { version = "0.6", features = ['http', 'axum'] }
+worker-macros = { version = "0.6", features = ['http'] }
+axum = { version = "0.8", default-features = false }
+tower-service = "0.3.3"
