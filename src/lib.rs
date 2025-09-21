@@ -1,11 +1,11 @@
 mod extract;
 
 use axum::{response::IntoResponse, routing::get, Router};
-use axum_extra::extract::Query;
+use axum_extra::{extract::Query, TypedHeader};
 use tower_service::Service;
 use worker::{event, Context, Env, HttpRequest};
 
-use crate::extract::IpAddrs;
+use crate::extract::{CfConnectingIp, IpAddrs};
 
 fn router() -> Router {
     Router::new()
@@ -33,7 +33,9 @@ pub async fn root() -> &'static str {
 
 async fn update(
     Query(IpAddrs { ip }): Query<IpAddrs>,
+    TypedHeader(CfConnectingIp(client_ip)): TypedHeader<CfConnectingIp>,
 ) -> impl IntoResponse {
     log::debug!("ip {:?}", ip);
+    log::debug!("client ip {:?}", client_ip);
     "ok".into_response()
 }
