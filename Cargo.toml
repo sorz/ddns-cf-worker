@@ -22,3 +22,4 @@ console_log = "1"
 wasm-bindgen-futures = "0.4"
 futures = "0.3"
 constant_time_eq = "0.4"
+cloudflare = { git = "https://github.com/cloudflare/cloudflare-rs", tag = "v0.14.0" }

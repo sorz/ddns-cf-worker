@@ -1,3 +1,4 @@
+mod dns;
 mod extract;
 
 use std::{collections::HashSet, net::IpAddr};
@@ -8,6 +9,10 @@ use axum_extra::{
     headers::{authorization::Basic, Authorization},
     TypedHeader,
 };
+use cloudflare::{
+    endpoints::dns::dns::{ListDnsRecords, ListDnsRecordsParams},
+    framework::{auth::Credentials, client::async_api::Client, Environment},
+};
 use constant_time_eq::constant_time_eq;
 use futures::channel::oneshot;
 use tower_service::Service;
@@ -15,6 +20,10 @@ use wasm_bindgen_futures::spawn_local;
 use worker::{event, Context, Env, HttpRequest};
 
 use crate::extract::{CfConnectingIp, IpAddrs};
+
+static CF_API_TOKEN: &str = "CF_API_TOKEN";
+static CF_ZONE_ID: &str = "CF_ZONE_ID";
+static DOMAIN_SUFFIX: &str = "DOMAIN_SUFFIX";
 
 static KV_HOST_PASSWORD: &str = "ddns_host_password";
 static KV_HOST_PASSWORD_CACHE_SECS: u64 = 600;
@@ -82,11 +91,17 @@ async fn handle_update_request(
     log::debug!("ip {:?}", ips);
     log::debug!("client ip {:?}", client_ip);
 
-    // TODO: normalize hostname
+    let suffix = tryit!(env.secret(DOMAIN_SUFFIX)).to_string();
+    let suffix = if suffix.starts_with('.') {
+        suffix
+    } else {
+        format!(".{suffix}")
+    };
+    let hostname = auth.username().trim_end_matches(&suffix);
 
     // Check credential
     let password = tryit!(env.kv(KV_HOST_PASSWORD))
-        .get(auth.username())
+        .get(hostname)
         .cache_ttl(KV_HOST_PASSWORD_CACHE_SECS)
         .text()
         .await;
@@ -100,7 +115,23 @@ async fn handle_update_request(
         }
     }
 
-    // TODO: udpate records
+    // Update records
+    let token = tryit!(env.secret(CF_API_TOKEN)).to_string();
+    let zone_id = tryit!(env.secret(CF_ZONE_ID)).to_string();
+    let client = tryit!(Client::new(
+        Credentials::UserAuthToken { token },
+        Default::default(),
+        Environment::Production
+    ));
+    let requset = ListDnsRecords {
+        zone_identifier: zone_id.as_ref(),
+        params: ListDnsRecordsParams {
+            name: Some(format!("{hostname}{suffix}")),
+            ..Default::default()
+        },
+    };
+    let resp = tryit!(client.request(&requset).await);
+    log::debug!("resp {:?}", resp);
 
     (StatusCode::OK, "ok".to_string())
 }
