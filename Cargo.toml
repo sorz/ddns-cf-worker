@@ -10,11 +10,19 @@ release = false
 [lib]
 crate-type = ["cdylib"]
 
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
+
 [dependencies]
 worker = { version = "0.6", features = ["http", "axum"] }
 worker-macros = { version = "0.6", features = ["http"] }
 axum = { version = "0.8", default-features = false }
-axum-extra = { version = "0.10", features = ["query", "typed-header"] }
+axum-extra = { version = "0.10", default-features = false, features = [
+    "query",
+    "typed-header",
+] }
 tower-service = "0.3.3"
 serde = "1"
 log = "0.4"
@@ -22,6 +30,6 @@ console_log = "1"
 wasm-bindgen-futures = "0.4"
 futures = "0.3"
 constant_time_eq = "0.4"
-cloudflare = { git = "https://github.com/cloudflare/cloudflare-rs", tag = "v0.14.0" }
+cloudflare = { git = "https://github.com/cloudflare/cloudflare-rs", tag = "v0.14.0", default-features = false }
 thiserror = "2"
 itertools = "0.14"
