@@ -56,10 +56,10 @@ async fn update(
     Query(Credential { hostname, password }): Query<Credential>,
 ) -> impl IntoResponse {
     // Extract addresses
-    let mut ips: HashSet<_> = ip.union(&myip).collect();
+    let mut ips: HashSet<_> = ip.union(&myip).copied().collect();
     if ips.is_empty() {
         // Fallback to client's IP address
-        ips.insert(&client_ip);
+        ips.insert(client_ip);
     }
 
     // Extract credential
@@ -71,7 +71,7 @@ async fn update(
     // Spawn in local thread as a workaround
     let (tx, rx) = oneshot::channel();
     spawn_local(async move {
-        let resp = handle_update_request(env, ip, hostname, password).await;
+        let resp = handle_update_request(env, ips, hostname, password).await;
 
         tx.send(match resp {
             Ok(Action::Updated) => (StatusCode::OK, "success").into_response(),
