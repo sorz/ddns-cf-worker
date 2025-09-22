@@ -61,7 +61,8 @@ impl ZoneClient {
     }
 
     pub(crate) async fn create_record(&self, name: &str, ip_addr: IpAddr) -> UpdateResult<()> {
-        let request = CreateDnsRecord {
+        log::debug!("Create {ip_addr} for {name}");
+        let request: CreateDnsRecord<'_> = CreateDnsRecord {
             zone_identifier: &self.zone_id,
             params: CreateDnsRecordParams {
                 ttl: Some(self.record_ttl),
@@ -83,6 +84,12 @@ impl ZoneClient {
         record: &DnsRecord,
         ip_addr: IpAddr,
     ) -> UpdateResult<()> {
+        log::debug!(
+            "Update {:?} => {} for {}",
+            record.content,
+            ip_addr,
+            record.name
+        );
         let request = UpdateDnsRecord {
             zone_identifier: &self.zone_id,
             identifier: &record.id,
@@ -101,6 +108,7 @@ impl ZoneClient {
     }
 
     pub(crate) async fn delete_record(&self, record: &DnsRecord) -> UpdateResult<()> {
+        log::debug!("Delete {:?} from {}", record.content, record.name);
         let request = DeleteDnsRecord {
             zone_identifier: &self.zone_id,
             identifier: &record.id,

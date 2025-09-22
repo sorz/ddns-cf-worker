@@ -10,8 +10,10 @@ use axum_extra::{
     headers::{authorization::Basic, Authorization},
     TypedHeader,
 };
+use cloudflare::endpoints::dns::dns::DnsContent;
 use constant_time_eq::constant_time_eq;
 use futures::channel::oneshot;
+use itertools::{EitherOrBoth, Itertools};
 use tower_service::Service;
 use wasm_bindgen_futures::spawn_local;
 use worker::{event, Context, Env, HttpRequest};
@@ -53,18 +55,24 @@ pub async fn root() -> &'static str {
 
 async fn update(
     State(env): State<Env>,
-    Query(IpAddrs { ip }): Query<IpAddrs>,
+    Query(IpAddrs { mut ip }): Query<IpAddrs>,
     TypedHeader(CfConnectingIp(client_ip)): TypedHeader<CfConnectingIp>,
     TypedHeader(Authorization(auth)): TypedHeader<Authorization<Basic>>,
 ) -> impl IntoResponse {
+    // Fallback to client's IP address
+    if ip.is_empty() {
+        ip.insert(client_ip);
+    }
+
     // Worker produces non-Send futures while axum requires Send handle
     // Spawn in local thread as a workaround
     let (tx, rx) = oneshot::channel();
     spawn_local(async move {
-        let resp = handle_update_request(env, ip, client_ip, auth).await;
+        let resp = handle_update_request(env, ip, auth).await;
 
         tx.send(match resp {
-            Ok(()) => (StatusCode::OK, "ok").into_response(),
+            Ok(Action::Updated) => (StatusCode::OK, "success").into_response(),
+            Ok(Action::NoChange) => (StatusCode::OK, "no-change").into_response(),
             Err(err) => err.into_response(),
         })
         .unwrap();
@@ -75,15 +83,17 @@ async fn update(
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Action {
+    Updated,
+    NoChange,
+}
+
 async fn handle_update_request(
     env: Env,
-    ips: HashSet<IpAddr>,
-    client_ip: IpAddr,
+    mut ips: HashSet<IpAddr>,
     auth: Basic,
-) -> UpdateResult<()> {
-    log::debug!("ip {:?}", ips);
-    log::debug!("client ip {:?}", client_ip);
-
+) -> UpdateResult<Action> {
     // Normalize hostname
     let suffix = env.secret(DOMAIN_SUFFIX)?.to_string();
     let suffix = if suffix.starts_with('.') {
@@ -105,11 +115,34 @@ async fn handle_update_request(
         return Err(UpdateError::Unauthorized);
     }
 
-    // Update records
+    // Check existing records
     let fqdn = format!("{hostname}{suffix}");
     let zone = ZoneClient::new(env).await?;
-    let records = zone.list_records(fqdn.clone()).await?;
-    log::debug!("resp {:?}", records);
+    let records: Vec<_> = zone
+        .list_records(fqdn.clone())
+        .await?
+        .into_iter()
+        .filter(|record| {
+            let addr = match record.content {
+                DnsContent::A { content } => IpAddr::V4(content),
+                DnsContent::AAAA { content } => IpAddr::V6(content),
+                _ => return false, // Ignore non-A/AAAA records
+            };
+            // Ignore if record matches updating request
+            !ips.remove(&addr)
+        })
+        .collect();
+    if ips.is_empty() {
+        return Ok(Action::NoChange);
+    }
 
-    Ok(())
+    // Update records
+    for pair in ips.into_iter().zip_longest(records) {
+        match pair {
+            EitherOrBoth::Both(ip_addr, record) => zone.update_record(&record, ip_addr).await?,
+            EitherOrBoth::Left(ip_addr) => zone.create_record(&fqdn, ip_addr).await?,
+            EitherOrBoth::Right(record) => zone.delete_record(&record).await?,
+        }
+    }
+    Ok(Action::Updated)
 }
