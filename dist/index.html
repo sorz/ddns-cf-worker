@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Dynamic DNS Service</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { margin: 1em 3em; color: #333; font-size: 1.1em; }
+    h2 { color: gray; font-size: 1.2em; margin-top: 2em; }
+    summary { color: gray; }
+    pre { overflow: auto; }
+    li { margin: 0.6em 0; }
+    .variable { font-style: italic; text-decoration: underline dotted; }
+    footer { color: darkgray; margin-top: 3em; font-size: 0.8em; }
+    footer a { color: darkgray; }
+  </style>
+</head>
+<body>
+  <h2>Example</h2>
+  <pre>$ curl https://<span class="domain">example.com</span>/update -u <span class="variable">hostname</span>:<span class="variable">password</span>
+&gt; success
+
+$ curl https://<span class="variable">hostname</span>:<span class="variable">password</span>@<span class="domain">example.com</span>/update?ip=<span class="variable">192.0.2.8</span>
+&gt; success
+
+$ dig +short <span class="variable">hostname</span>.<span class="domain">example.com</span>
+&gt; 198.51.100.5
+    </pre>
+  <details>
+    <summary>More examples</summary>
+    <pre>$ curl https://.../update?hostname=<span class="variable">hostname</span>&password=<span class="variable">password</span>
+&gt; success
+
+$ curl https://.../update?ip=<span class="variable">2001:DB8::1968:08:17</span>
+&gt; success
+
+$ dig +short <span class="variable">hostname</span>.<span class="domain">example.com</span> aaaa
+&gt; 2001:db8::1968:8:17
+
+$ curl https://.../update?ip=<span class="variable">2001:DB8::1968:08:17</span>&amp;ip=<span class="variable">192.0.2.8</span>&amp;ip=<span class="variable">198.51.100.5</span>
+&gt; success
+
+$ dig +short <span class="variable">hostname</span>.<span class="domain">example.com</span> aaaa
+&gt; 2001:db8::1968:8:17
+$ dig +short <span class="variable">hostname</span>.<span class="domain">example.com</span> a
+&gt; 192.0.2.8
+  198.51.100.5
+      </pre>
+  </details>
+
+  <h2>Tips</h2>
+  <ul>
+    <li>Add a CNAME record on your own domain name;
+    <li>Only send request when your IP address has been changed;
+    <li>Compatible with HE.net's DDNS clients/scripts.
+  </ul>
+
+  <footer>
+    <p>Provided without any warranty. <br />Source code:
+      <a href="https://github.com/sorz/ddns-cf-worker">sorz/ddns-cf-worker</a>.
+  </footer>
+  <script>
+    document.querySelectorAll("span.domain").forEach((span) => {
+      span.textContent = window.location.hostname || "example.com";
+    });
+  </script>
+</body>
+</html>

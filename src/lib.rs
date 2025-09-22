@@ -41,16 +41,11 @@ async fn fetch(
     _ctx: Context,
 ) -> worker::Result<axum::http::Response<axum::body::Body>> {
     let resp = Router::<Env>::new()
-        .route("/", get(root))
         .route("/update", get(update))
         .with_state(env)
         .call(req)
         .await?;
     Ok(resp)
-}
-
-pub async fn root() -> &'static str {
-    "Hello Axum!"
 }
 
 async fn update(

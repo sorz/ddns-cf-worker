@@ -5,6 +5,10 @@ compatibility_date = "2025-09-21"
 [build]
 command = "cargo install -q worker-build && worker-build --release"
 
+[assets]
+directory = "./dist/"
+run_worker_first = [ "/update" ]
+
 [[kv_namespaces]]
 binding = "ddns_host_password"
 id = "31cad14e9d0243aea72e964a1fc5a913"
