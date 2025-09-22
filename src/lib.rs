@@ -21,7 +21,7 @@ use worker::{event, Context, Env, HttpRequest};
 use crate::{
     dns::ZoneClient,
     error::{UpdateError, UpdateResult},
-    extract::{CfConnectingIp, IpAddrs},
+    extract::{CfConnectingIp, Credential, IpAddrs},
 };
 
 static DOMAIN_SUFFIX: &str = "DOMAIN_SUFFIX";
@@ -57,19 +57,26 @@ async fn update(
     State(env): State<Env>,
     Query(IpAddrs { ip, myip }): Query<IpAddrs>,
     TypedHeader(CfConnectingIp(client_ip)): TypedHeader<CfConnectingIp>,
-    TypedHeader(Authorization(auth)): TypedHeader<Authorization<Basic>>,
+    auth_header: Option<TypedHeader<Authorization<Basic>>>,
+    Query(Credential { hostname, password }): Query<Credential>,
 ) -> impl IntoResponse {
-    // Fallback to client's IP address
+    // Extract addresses
     let mut ips: HashSet<_> = ip.union(&myip).collect();
     if ips.is_empty() {
+        // Fallback to client's IP address
         ips.insert(&client_ip);
     }
+
+    // Extract credential
+    let (hostname, password) = auth_header
+        .map(|auth| (auth.username().to_string(), auth.password().to_string()))
+        .unwrap_or((hostname, password));
 
     // Worker produces non-Send futures while axum requires Send handle
     // Spawn in local thread as a workaround
     let (tx, rx) = oneshot::channel();
     spawn_local(async move {
-        let resp = handle_update_request(env, ip, auth).await;
+        let resp = handle_update_request(env, ip, hostname, password).await;
 
         tx.send(match resp {
             Ok(Action::Updated) => (StatusCode::OK, "success").into_response(),
@@ -93,7 +100,8 @@ enum Action {
 async fn handle_update_request(
     env: Env,
     mut ips: HashSet<IpAddr>,
-    auth: Basic,
+    hostname: String,
+    password: String,
 ) -> UpdateResult<Action> {
     // Normalize hostname
     let suffix = env.secret(DOMAIN_SUFFIX)?.to_string();
@@ -102,17 +110,20 @@ async fn handle_update_request(
     } else {
         format!(".{suffix}")
     };
-    let hostname = auth.username().trim_end_matches(&suffix);
+    let hostname = hostname.trim_end_matches('.').trim_end_matches(&suffix);
 
     // Check credential
-    let password = env
+    if hostname.is_empty() || password.is_empty() {
+        return Err(UpdateError::Unauthorized);
+    }
+    let correct_pwd = env
         .kv(KV_HOST_PASSWORD)?
         .get(hostname)
         .cache_ttl(KV_HOST_PASSWORD_CACHE_SECS)
         .text()
         .await?
         .ok_or(UpdateError::Unauthorized)?;
-    if !constant_time_eq(password.as_bytes(), auth.password().as_bytes()) {
+    if !constant_time_eq(password.as_bytes(), correct_pwd.as_bytes()) {
         return Err(UpdateError::Unauthorized);
     }
 

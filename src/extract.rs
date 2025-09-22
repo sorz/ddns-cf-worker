@@ -12,6 +12,14 @@ pub(crate) struct IpAddrs {
     pub(crate) myip: HashSet<IpAddr>,
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct Credential {
+    #[serde(default)]
+    pub(crate) hostname: String,
+    #[serde(default)]
+    pub(crate) password: String,
+}
+
 static CF_CONNECTING_IP: HeaderName = HeaderName::from_static("cf-connecting-ip");
 
 pub(crate) struct CfConnectingIp(pub(crate) IpAddr);
