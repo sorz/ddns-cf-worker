@@ -1,9 +1,10 @@
 mod dns;
+mod error;
 mod extract;
 
 use std::{collections::HashSet, net::IpAddr};
 
-use axum::{extract::State, http::StatusCode, routing::get, Router};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Router};
 use axum_extra::{
     extract::Query,
     headers::{authorization::Basic, Authorization},
@@ -19,7 +20,10 @@ use tower_service::Service;
 use wasm_bindgen_futures::spawn_local;
 use worker::{event, Context, Env, HttpRequest};
 
-use crate::extract::{CfConnectingIp, IpAddrs};
+use crate::{
+    error::UpdateError,
+    extract::{CfConnectingIp, IpAddrs},
+};
 
 static CF_API_TOKEN: &str = "CF_API_TOKEN";
 static CF_ZONE_ID: &str = "CF_ZONE_ID";
@@ -57,29 +61,23 @@ async fn update(
     Query(IpAddrs { ip }): Query<IpAddrs>,
     TypedHeader(CfConnectingIp(client_ip)): TypedHeader<CfConnectingIp>,
     TypedHeader(Authorization(auth)): TypedHeader<Authorization<Basic>>,
-) -> (StatusCode, String) {
+) -> impl IntoResponse {
     // Worker produces non-Send futures while axum requires Send handle
     // Spawn in local thread as a workaround
     let (tx, rx) = oneshot::channel();
     spawn_local(async move {
         let resp = handle_update_request(env, ip, client_ip, auth).await;
-        tx.send(resp).unwrap();
-    });
-    rx.await.unwrap()
-}
 
-macro_rules! tryit {
-    ($result:expr) => {
-        match $result {
-            Ok(value) => value,
-            Err(err) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Internal server error: {:?}", err),
-                )
-            }
-        }
-    };
+        tx.send(match resp {
+            Ok(()) => (StatusCode::OK, "ok").into_response(),
+            Err(err) => err.into_response(),
+        })
+        .unwrap();
+    });
+    match rx.await {
+        Ok(resp) => resp,
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Task canceled").into_response(),
+    }
 }
 
 async fn handle_update_request(
@@ -87,11 +85,12 @@ async fn handle_update_request(
     ips: HashSet<IpAddr>,
     client_ip: IpAddr,
     auth: Basic,
-) -> (StatusCode, String) {
+) -> Result<(), UpdateError> {
     log::debug!("ip {:?}", ips);
     log::debug!("client ip {:?}", client_ip);
 
-    let suffix = tryit!(env.secret(DOMAIN_SUFFIX)).to_string();
+    // Normalize hostname
+    let suffix = env.secret(DOMAIN_SUFFIX)?.to_string();
     let suffix = if suffix.starts_with('.') {
         suffix
     } else {
@@ -100,29 +99,25 @@ async fn handle_update_request(
     let hostname = auth.username().trim_end_matches(&suffix);
 
     // Check credential
-    let password = tryit!(env.kv(KV_HOST_PASSWORD))
+    let password = env
+        .kv(KV_HOST_PASSWORD)?
         .get(hostname)
         .cache_ttl(KV_HOST_PASSWORD_CACHE_SECS)
         .text()
-        .await;
-    match tryit!(password) {
-        Some(pwd) if constant_time_eq(pwd.as_bytes(), auth.password().as_bytes()) => (),
-        _ => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                "hostname/password incorrect".to_string(),
-            )
-        }
+        .await?
+        .ok_or(UpdateError::Unauthorized)?;
+    if constant_time_eq(password.as_bytes(), auth.password().as_bytes()) {
+        return Err(UpdateError::Unauthorized);
     }
 
     // Update records
-    let token = tryit!(env.secret(CF_API_TOKEN)).to_string();
-    let zone_id = tryit!(env.secret(CF_ZONE_ID)).to_string();
-    let client = tryit!(Client::new(
+    let token = env.secret(CF_API_TOKEN)?.to_string();
+    let zone_id = env.secret(CF_ZONE_ID)?.to_string();
+    let client = Client::new(
         Credentials::UserAuthToken { token },
         Default::default(),
-        Environment::Production
-    ));
+        Environment::Production,
+    )?;
     let requset = ListDnsRecords {
         zone_identifier: zone_id.as_ref(),
         params: ListDnsRecordsParams {
@@ -130,8 +125,8 @@ async fn handle_update_request(
             ..Default::default()
         },
     };
-    let resp = tryit!(client.request(&requset).await);
+    let resp = client.request(&requset).await?;
     log::debug!("resp {:?}", resp);
 
-    (StatusCode::OK, "ok".to_string())
+    Ok(())
 }

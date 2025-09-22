@@ -316,6 +316,7 @@ dependencies = [
  "futures",
  "log",
  "serde",
+ "thiserror",
  "tower-service",
  "wasm-bindgen-futures",
  "worker",
