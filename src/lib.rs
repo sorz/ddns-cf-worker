@@ -24,7 +24,7 @@ use crate::{
     extract::{CfConnectingIp, Credential, IpAddrs},
 };
 
-static DOMAIN_SUFFIX: &str = "DOMAIN_SUFFIX";
+static DOMAIN_SUFFIX: &str = "DDNS_DOMAIN_SUFFIX";
 
 static KV_HOST_PASSWORD: &str = "ddns_host_password";
 static KV_HOST_PASSWORD_CACHE_SECS: u64 = 600;

@@ -11,9 +11,9 @@ use worker::Env;
 
 use crate::error::UpdateResult;
 
-static CF_API_TOKEN: &str = "CF_API_TOKEN";
-static CF_ZONE_ID: &str = "CF_ZONE_ID";
-static RECORD_TTL: &str = "RECORD_TTL";
+static CF_API_TOKEN: &str = "DDNS_CF_API_TOKEN";
+static CF_ZONE_ID: &str = "DDNS_CF_ZONE_ID";
+static RECORD_TTL: &str = "DDNS_RECORD_TTL";
 static DEFAULT_RECORD_TTL: u32 = 300;
 
 pub(crate) struct ZoneClient {
