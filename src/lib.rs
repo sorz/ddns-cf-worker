@@ -10,10 +10,6 @@ use axum_extra::{
     headers::{authorization::Basic, Authorization},
     TypedHeader,
 };
-use cloudflare::{
-    endpoints::dns::dns::{ListDnsRecords, ListDnsRecordsParams},
-    framework::{auth::Credentials, client::async_api::Client, Environment},
-};
 use constant_time_eq::constant_time_eq;
 use futures::channel::oneshot;
 use tower_service::Service;
@@ -21,12 +17,11 @@ use wasm_bindgen_futures::spawn_local;
 use worker::{event, Context, Env, HttpRequest};
 
 use crate::{
-    error::UpdateError,
+    dns::ZoneClient,
+    error::{UpdateError, UpdateResult},
     extract::{CfConnectingIp, IpAddrs},
 };
 
-static CF_API_TOKEN: &str = "CF_API_TOKEN";
-static CF_ZONE_ID: &str = "CF_ZONE_ID";
 static DOMAIN_SUFFIX: &str = "DOMAIN_SUFFIX";
 
 static KV_HOST_PASSWORD: &str = "ddns_host_password";
@@ -85,7 +80,7 @@ async fn handle_update_request(
     ips: HashSet<IpAddr>,
     client_ip: IpAddr,
     auth: Basic,
-) -> Result<(), UpdateError> {
+) -> UpdateResult<()> {
     log::debug!("ip {:?}", ips);
     log::debug!("client ip {:?}", client_ip);
 
@@ -111,22 +106,9 @@ async fn handle_update_request(
     }
 
     // Update records
-    let token = env.secret(CF_API_TOKEN)?.to_string();
-    let zone_id = env.secret(CF_ZONE_ID)?.to_string();
-    let client = Client::new(
-        Credentials::UserAuthToken { token },
-        Default::default(),
-        Environment::Production,
-    )?;
-    let requset = ListDnsRecords {
-        zone_identifier: zone_id.as_ref(),
-        params: ListDnsRecordsParams {
-            name: Some(format!("{hostname}{suffix}")),
-            ..Default::default()
-        },
-    };
-    let resp = client.request(&requset).await?;
-    log::debug!("resp {:?}", resp);
+    let zone = ZoneClient::new(env).await?;
+    let records = zone.list_records(format!("{hostname}{suffix}")).await?;
+    log::debug!("resp {:?}", records);
 
     Ok(())
 }

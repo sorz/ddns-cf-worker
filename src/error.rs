@@ -5,6 +5,8 @@ use axum::{
 use futures::channel::oneshot;
 use thiserror::Error;
 
+pub(crate) type UpdateResult<T> = Result<T, UpdateError>;
+
 #[derive(Error, Debug)]
 pub enum UpdateError {
     #[error("Cloudflare Worker runtime error")]
