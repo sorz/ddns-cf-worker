@@ -9,19 +9,19 @@ pub(crate) type UpdateResult<T> = Result<T, UpdateError>;
 
 #[derive(Error, Debug)]
 pub enum UpdateError {
-    #[error("Cloudflare Worker runtime error")]
+    #[error("Cloudflare Worker runtime error: {0}")]
     Worker(#[from] worker::Error),
 
-    #[error("KV store error")]
+    #[error("KV store error: {0}")]
     Kv(#[from] worker::kv::KvError),
 
-    #[error("Cloudflare SDK error")]
+    #[error("Cloudflare SDK error: {0}")]
     CloudflareSdk(#[from] cloudflare::framework::Error),
 
-    #[error("Cloudflare API error")]
+    #[error("Cloudflare API error: {0}")]
     CloudflareApi(#[from] cloudflare::framework::response::ApiFailure),
 
-    #[error("Task canceled")]
+    #[error("Task canceled: {0}")]
     Canceled(#[from] oneshot::Canceled),
 
     #[error("hostname/password incorrect")]

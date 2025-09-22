@@ -101,13 +101,14 @@ async fn handle_update_request(
         .text()
         .await?
         .ok_or(UpdateError::Unauthorized)?;
-    if constant_time_eq(password.as_bytes(), auth.password().as_bytes()) {
+    if !constant_time_eq(password.as_bytes(), auth.password().as_bytes()) {
         return Err(UpdateError::Unauthorized);
     }
 
     // Update records
+    let fqdn = format!("{hostname}{suffix}");
     let zone = ZoneClient::new(env).await?;
-    let records = zone.list_records(format!("{hostname}{suffix}")).await?;
+    let records = zone.list_records(fqdn.clone()).await?;
     log::debug!("resp {:?}", records);
 
     Ok(())
