@@ -8,6 +8,8 @@ use serde::Deserialize;
 pub(crate) struct IpAddrs {
     #[serde(default)]
     pub(crate) ip: HashSet<IpAddr>,
+    #[serde(default)]
+    pub(crate) myip: HashSet<IpAddr>,
 }
 
 static CF_CONNECTING_IP: HeaderName = HeaderName::from_static("cf-connecting-ip");

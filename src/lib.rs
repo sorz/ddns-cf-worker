@@ -55,13 +55,14 @@ pub async fn root() -> &'static str {
 
 async fn update(
     State(env): State<Env>,
-    Query(IpAddrs { mut ip }): Query<IpAddrs>,
+    Query(IpAddrs { ip, myip }): Query<IpAddrs>,
     TypedHeader(CfConnectingIp(client_ip)): TypedHeader<CfConnectingIp>,
     TypedHeader(Authorization(auth)): TypedHeader<Authorization<Basic>>,
 ) -> impl IntoResponse {
     // Fallback to client's IP address
-    if ip.is_empty() {
-        ip.insert(client_ip);
+    let mut ips: HashSet<_> = ip.union(&myip).collect();
+    if ips.is_empty() {
+        ips.insert(&client_ip);
     }
 
     // Worker produces non-Send futures while axum requires Send handle
